@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+# Template: @STUDIO_BIN@ is substituted by installers/unsloth.sh (KINN_STUDIO_BIN).
+[Unit]
+Description=Unsloth Studio (fine-tuning + inference UI)
+Documentation=https://docs.unsloth.ai/
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+
+# User units do not read /etc/profile.d, so rocm.sh never applies here; spell
+# out the PATH Studio needs to find its own CLI and the ROCm tools.
+Environment=PATH=%h/.local/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
+# Deliberately NO HSA_OVERRIDE_GFX_VERSION: gfx1151 is native in ROCm 7.2, and
+# Studio clears any inherited override before launching llama-server anyway.
+
+# Loopback only. --cloudflare / --secure would publish this machine on a public
+# internet URL; never add them here.
+ExecStart=@STUDIO_BIN@ studio --host 127.0.0.1 --port 8888
+# Studio supervises its own llama-server children and tracks them per
+# STUDIO_HOME; let it retire them before systemd kills the cgroup.
+ExecStop=@STUDIO_BIN@ studio stop
+TimeoutStopSec=60
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

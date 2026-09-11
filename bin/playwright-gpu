@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+#
+# Make every Playwright-managed Chromium on this machine render WebGL on the
+# real GPU (ANGLE -> Vulkan -> RADV) instead of SwiftShader.
+#
+# Playwright has no global "extra browser args" hook: flags live per project
+# in playwright.config.ts, and headless Chromium falls back to SwiftShader —
+# software Vulkan that renders on every CPU core. So each cached binary under
+# ~/.cache/ms-playwright is renamed to <name>.real and replaced by a tiny sh
+# wrapper that prepends the GPU flags and execs the real one. Chromium spawns
+# its child processes from argv[0], which after exec is the .real path, so the
+# wrapper runs exactly once per browser launch.
+#
+#   playwright-gpu wrap [--wait SECS]   wrap every complete install (default)
+#   playwright-gpu unwrap               restore the original binaries
+#   playwright-gpu status               one line per binary: wrapped|plain|incomplete
+#
+# --wait polls for browsers still being downloaded (the user path unit fires
+# when a new revision directory appears, before its files are complete).
+#
+# Per launch, PLAYWRIGHT_GPU=0 in the environment bypasses the flags. A
+# project's own launchOptions.args still win: Chromium honours the *last*
+# occurrence of a switch, and the wrapper's flags come first.
+set -euo pipefail
+
+ROOT="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+MARK='# playwright-gpu wrapper'
+
+# The wrapper that replaces each binary. Kept POSIX sh: it runs on every
+# browser launch and must not depend on bash.
+wrapper_body() {
+cat <<'WRAP'
+#!/bin/sh
+# playwright-gpu wrapper (halomarchy) — the real binary is "$0.real".
+# Routes WebGL through ANGLE/Vulkan on the GPU instead of SwiftShader.
+# PLAYWRIGHT_GPU=0 bypasses; a later --use-angle/--enable-features from the
+# caller overrides, since Chromium takes the last occurrence of a switch.
+self="$0"
+case "$self" in */*) ;; *) self="$(command -v "$self")" ;; esac
+real="${self}.real"
+[ "${PLAYWRIGHT_GPU:-1}" = 0 ] && exec "$real" "$@"
+
+# Merge Vulkan into an existing --enable-features rather than adding a second
+# switch, which Chromium would drop.
+need_features=1; n=$#; i=0
+while [ "$i" -lt "$n" ]; do
+    a="$1"; shift; i=$((i+1))
+    case "$a" in
+        --enable-features=) a="--enable-features=Vulkan"; need_features=0 ;;
+        --enable-features=*) a="${a},Vulkan"; need_features=0 ;;
+    esac
+    set -- "$@" "$a"
+done
+[ "$need_features" -eq 1 ] && set -- "$@" --enable-features=Vulkan
+
+exec "$real" \
+    --ignore-gpu-blocklist --use-gl=angle --use-angle=vulkan \
+    --enable-gpu-rasterization --enable-zero-copy \
+    "$@"
+WRAP
+}
+
+is_elf()     { [ "$(head -c 4 "$1" 2>/dev/null | tr -d '\0')" = $'\x7fELF' ]; }
+is_wrapper() { [ -f "$1" ] && head -n 3 "$1" 2>/dev/null | grep -q "$MARK"; }
+
+# Every Chromium binary Playwright may launch: `chrome` for headed runs and
+# channel:'chromium', `chrome-headless-shell` for the default headless mode.
+binaries() {
+    local b
+    for b in "$ROOT"/chromium-*/chrome-linux*/chrome \
+             "$ROOT"/chromium_headless_shell-*/chrome-headless-shell-linux*/chrome-headless-shell; do
+        [ -e "$b" ] || [ -e "$b.real" ] || continue
+        printf '%s\n' "$b"
+    done
+}
+
+complete() { [ -f "$(dirname "$(dirname "$1")")/INSTALLATION_COMPLETE" ]; }
+
+state_of() {   # wrapped | plain | incomplete | broken
+    local b="$1"
+    complete "$b" || { echo incomplete; return; }
+    if is_wrapper "$b" && [ -f "$b.real" ]; then echo wrapped
+    elif [ -f "$b" ] && is_elf "$b"; then echo plain
+    elif [ -f "$b.real" ] && [ ! -f "$b" ]; then echo broken   # interrupted mid-wrap
+    else echo plain; fi
+}
+
+wrap_one() {
+    local b="$1" tmp="$1.playwright-gpu.$$.tmp"
+    case "$(state_of "$b")" in
+        wrapped)    return 0 ;;
+        incomplete) return 1 ;;
+        plain)
+            # A reinstall (--force) drops a fresh ELF over an old wrapper's slot:
+            # the ELF is the new truth, so it becomes .real.
+            mv -f "$b" "$b.real" ;;
+        broken)     ;;
+    esac
+    wrapper_body > "$tmp"
+    chmod 755 "$tmp"
+    mv -f "$tmp" "$b"
+    echo "wrapped   $b"
+}
+
+unwrap_one() {
+    local b="$1"
+    if [ -f "$b.real" ]; then
+        mv -f "$b.real" "$b"
+        echo "restored  $b"
+    fi
+}
+
+cmd_status() {
+    local b
+    while read -r b; do printf '%s %s\n' "$(state_of "$b")" "$b"; done < <(binaries)
+}
+
+cmd_wrap() {
+    local wait="${1:-0}" deadline b pending
+    # The path unit and a manual `wrap` can run at the same moment (install.sh
+    # enables the unit, whose Wants= starts the service, then wraps itself).
+    # Serialise: the second one finds everything already wrapped.
+    mkdir -p "$ROOT"
+    exec 9>"$ROOT/.playwright-gpu.lock"
+    flock 9
+    deadline=$(( $(date +%s) + wait ))
+    while :; do
+        pending=0
+        while read -r b; do wrap_one "$b" || pending=1; done < <(binaries)
+        [ "$pending" -eq 0 ] && break
+        [ "$(date +%s)" -ge "$deadline" ] && { echo "some browsers still downloading; run again later" >&2; break; }
+        sleep 5
+    done
+}
+
+cmd_unwrap() { local b; while read -r b; do unwrap_one "$b"; done < <(binaries); }
+
+cmd="${1:-wrap}"; [ $# -gt 0 ] && shift
+wait=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --wait) shift; wait="${1:-0}" ;;
+        --wait=*) wait="${1#--wait=}" ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+case "$cmd" in
+    wrap)   cmd_wrap "$wait" ;;
+    unwrap) cmd_unwrap ;;
+    status) cmd_status ;;
+    -h|--help|help) sed -n '5,24p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: playwright-gpu wrap [--wait SECS] | unwrap | status" >&2; exit 2 ;;
+esac

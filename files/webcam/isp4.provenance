@@ -1,0 +1,4 @@
+# Upstream source for the vendored AMD ISP4 driver.
+# Fetched by installers/webcam.sh and verified against isp4.sha256.
+ISP4_REF="v7.2"
+ISP4_BASE="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/drivers/media/platform/amd/isp4"

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+#
+# Cap the CPU's peak clock so a burst of all-core boost cannot take the SoC
+# to its thermal limit (and, on the ZBook Ultra G1a, past whatever makes the
+# EC cut power). See docs/decisions.md §16.
+#
+#   kinn-cpu-cap apply [MHZ]   write the cap to every policy (default: /etc/kinn/cpu-cap)
+#   kinn-cpu-cap clear         restore the hardware maximum
+#   kinn-cpu-cap status        one line: cap, hardware max, boost, profile
+#
+# Runs as root from kinn-cpu-cap.service at boot and from the system-sleep
+# hook after resume, because cpufreq policies are rebuilt when CPUs come back
+# online and the cap would otherwise silently reset to the hardware maximum.
+set -euo pipefail
+
+CONF=/etc/kinn/cpu-cap
+CPUS=(/sys/devices/system/cpu/cpu[0-9]*/cpufreq)
+
+hw_max_khz() { cat "${CPUS[0]}/cpuinfo_max_freq"; }
+
+read_conf() {
+    local mhz=""
+    [ -f "$CONF" ] && mhz="$(tr -dc '0-9' < "$CONF")"
+    printf '%s' "$mhz"
+}
+
+apply() {
+    local mhz="${1:-$(read_conf)}" khz hw p
+    [ -n "$mhz" ] || { echo "no cap configured ($CONF empty); leaving hardware maximum" >&2; return 0; }
+    khz=$(( mhz * 1000 )); hw="$(hw_max_khz)"
+    [ "$khz" -le "$hw" ] || { echo "cap ${mhz} MHz exceeds hardware maximum $((hw/1000)) MHz; clamping" >&2; khz="$hw"; }
+    for p in "${CPUS[@]}"; do
+        # Never leave max below min: a cap under the floor is rejected by cpufreq.
+        [ "$khz" -ge "$(cat "$p/scaling_min_freq")" ] || khz="$(cat "$p/scaling_min_freq")"
+        echo "$khz" > "$p/scaling_max_freq"
+    done
+    echo "cap applied: $((khz/1000)) MHz on ${#CPUS[@]} CPUs"
+}
+
+clear_cap() {
+    local hw p; hw="$(hw_max_khz)"
+    for p in "${CPUS[@]}"; do echo "$hw" > "$p/scaling_max_freq"; done
+    echo "cap cleared: hardware maximum $((hw/1000)) MHz"
+}
+
+status() {
+    local cur hw
+    cur="$(cat "${CPUS[0]}/scaling_max_freq")"; hw="$(hw_max_khz)"
+    printf 'cap=%d MHz hw_max=%d MHz configured=%s boost=%s profile=%s\n' \
+        $((cur/1000)) $((hw/1000)) "${1:-$(read_conf)}" \
+        "$(cat "${CPUS[0]}/boost" 2>/dev/null || echo '?')" \
+        "$(cat /sys/firmware/acpi/platform_profile 2>/dev/null || echo '?')"
+}
+
+case "${1:-apply}" in
+    apply)  apply "${2:-}" ;;
+    clear)  clear_cap ;;
+    status) status ;;
+    -h|--help|help) sed -n '5,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: kinn-cpu-cap apply [MHZ] | clear | status" >&2; exit 2 ;;
+esac

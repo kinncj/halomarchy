@@ -1,0 +1,19 @@
+[Unit]
+Description=Heimdall privileged helper (RAPL power + hwmon temp)
+Documentation=https://github.com/kinncj/Heimdall/blob/main/docs/guides/04-privileged-metrics.md
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=heimdall
+# systemd creates /run/heimdall as root:heimdall; 0710 lets the group traverse it,
+# so the helper's 0660 socket is reachable by the daemon but not world-readable.
+RuntimeDirectory=heimdall
+RuntimeDirectoryMode=0710
+ExecStart=/usr/bin/heimdall-helper --socket /run/heimdall/helper.sock
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

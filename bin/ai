@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+# ai — control the local AI + monitoring services.
+# Single responsibility: map a verb + target onto the right systemctl scope.
+#
+# One registry, three views: `status`, `list` and `help` are all rendered from
+# the tables below, so a new service appears in all of them — including its
+# help entry — by adding one row here and nothing else.
+set -euo pipefail
+
+KINN_ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+# Same logo, different identity: install.sh provisions the machine, `ai` drives
+# the AI stack on it.
+KINN_TAGLINE="${KINN_TAGLINE:-        a · i   o n   s t r i x   h a l o}"
+export KINN_TAGLINE
+. "$KINN_ROOT/installers/_tui.sh"
+
+# ── registry ─────────────────────────────────────────────────────────────────
+USER_UNITS=(lemond unsloth-studio)                   # systemctl --user
+SYS_UNITS=(ollama heimdall-helper heimdall-daemon)   # systemctl (root)
+
+declare -A DESC=(
+  [lemond]="Lemonade Server"
+  [unsloth-studio]="Unsloth Studio"
+  [ollama]="Ollama"
+  [heimdall-helper]="Heimdall helper"
+  [heimdall-daemon]="Heimdall daemon"
+)
+declare -A ADDR=(
+  [lemond]=":13305 http, :9000 ws"
+  [unsloth-studio]=":8888 ui + api"
+  [ollama]=":11434"
+  [heimdall-helper]="unix socket"
+  [heimdall-daemon]="-> hub"
+)
+
+# Group targets. `all` is derived from the unit lists so it can never fall out
+# of sync; the single-member entries are aliases. Not named GROUPS: that is
+# bash's own read-only array of the caller's group IDs.
+declare -A AI_GROUPS=(
+  [all]="${USER_UNITS[*]} ${SYS_UNITS[*]}"
+  [ai]="lemond ollama unsloth-studio"
+  [heimdall]="heimdall-helper heimdall-daemon"
+  [lemonade]="lemond"
+  [unsloth]="unsloth-studio"
+  [studio]="unsloth-studio"
+)
+# Bash hashes associative keys, so listings need an explicit order.
+GROUP_ORDER=(all ai heimdall lemonade unsloth studio)
+
+# ── unit queries ─────────────────────────────────────────────────────────────
+resolve() {
+  local u
+  for u in "${USER_UNITS[@]}"; do [ "$u" = "$1" ] && { echo user;   return; }; done
+  for u in "${SYS_UNITS[@]}";  do [ "$u" = "$1" ] && { echo system; return; }; done
+  echo ""
+}
+
+# Is the unit file actually on this machine? `systemctl cat` reads the unit and
+# needs no root, unlike start/stop — so help and list stay honest without sudo.
+unit_present() {
+  case "$(resolve "$1")" in
+    user)   systemctl --user cat "$1" >/dev/null 2>&1 ;;
+    system) systemctl        cat "$1" >/dev/null 2>&1 ;;
+    *)      return 1 ;;
+  esac
+}
+
+unit_active() {
+  if [ "$(resolve "$1")" = user ]; then systemctl --user is-active --quiet "$1"
+  else systemctl is-active --quiet "$1"; fi
+}
+
+unit_state() {   # "<active>/<enabled>"
+  local unit=$1 state enabled
+  if [ "$(resolve "$unit")" = user ]; then
+    state=$(systemctl --user is-active  "$unit" 2>/dev/null || true)
+    enabled=$(systemctl --user is-enabled "$unit" 2>/dev/null || true)
+  else
+    state=$(systemctl is-active  "$unit" 2>/dev/null || true)
+    enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+  fi
+  printf '%s/%s' "${state:-?}" "${enabled:-?}"
+}
+
+act() {
+  local verb=$1 unit=$2 scope; scope=$(resolve "$unit")
+  case "$scope" in
+    user)   systemctl --user "$verb" "$unit" ;;
+    system) sudo systemctl "$verb" "$unit" ;;
+    *) printf '%sunknown service: %s%s\n' "$C_RED" "$unit" "$C_RESET" >&2; return 1 ;;
+  esac
+}
+
+status_line() {
+  local unit=$1 state; state=$(unit_state "$unit")
+  if unit_active "$unit"; then
+    tui_summary_row "${DESC[$unit]:-$unit}" ok   "${ADDR[$unit]:-}  ${state}"
+  else
+    tui_summary_row "${DESC[$unit]:-$unit}" skip "${ADDR[$unit]:-}  ${state}"
+  fi
+}
+
+targets() {
+  local t="${1:-all}"
+  if [ -n "${AI_GROUPS[$t]+_}" ]; then
+    # Word splitting is the point here: groups are space-separated unit lists.
+    # shellcheck disable=SC2086
+    printf '%s\n' ${AI_GROUPS[$t]}
+  else
+    printf '%s\n' "$@"
+  fi
+}
+
+# ── list ─────────────────────────────────────────────────────────────────────
+list_groups() {
+  local g u total active
+  iinfo "groups"
+  for g in "${GROUP_ORDER[@]}"; do
+    total=0; active=0
+    for u in ${AI_GROUPS[$g]}; do
+      total=$((total+1))
+      if unit_active "$u"; then active=$((active+1)); fi
+    done
+    if [ "$active" -gt 0 ]; then
+      tui_summary_row "$g" ok   "$active/$total up  ·  ${AI_GROUPS[$g]}"
+    else
+      tui_summary_row "$g" skip "$active/$total up  ·  ${AI_GROUPS[$g]}"
+    fi
+  done
+}
+
+list_units() {
+  local u
+  iinfo "units"
+  for u in "${USER_UNITS[@]}" "${SYS_UNITS[@]}"; do
+    if ! unit_present "$u"; then
+      tui_summary_row "$u" skip "$(resolve "$u")  ·  not installed"
+    elif unit_active "$u"; then
+      tui_summary_row "$u" ok   "$(resolve "$u")  ·  ${ADDR[$u]:-}  ·  $(unit_state "$u")"
+    else
+      tui_summary_row "$u" skip "$(resolve "$u")  ·  ${ADDR[$u]:-}  ·  $(unit_state "$u")"
+    fi
+  done
+}
+
+do_list() {
+  tui_section "targets" 60
+  case "${1:-targets}" in
+    groups)          list_groups ;;
+    units)           list_units ;;
+    targets|all|"")  list_groups; printf '\n'; list_units ;;
+    *) tui_box_bot 60
+       printf '%sunknown list: %s (try: targets, groups, units)%s\n' \
+              "$C_YELLOW" "$1" "$C_RESET" >&2; return 1 ;;
+  esac
+  tui_box_bot 60
+}
+
+# ── help ─────────────────────────────────────────────────────────────────────
+show_help() {
+  tui_logo
+  cat <<'HELPDOC'
+USAGE
+  ai [status] [target]        show services and loaded models
+  ai list [targets]           every target, its members and its state
+  ai <verb> [target]          act on a target (default: all)
+  ai logs <unit>              follow a unit's journal
+  ai help                     this text
+
+VERBS
+  start  stop  restart        act now
+  enable disable              persist across reboots (also starts/stops)
+HELPDOC
+
+  local g u note
+  printf '\nGROUP TARGETS\n'
+  for g in "${GROUP_ORDER[@]}"; do
+    note="${AI_GROUPS[$g]}"
+    [ "$g" = all ] && note="$note  (default)"
+    printf '  %-27s %s\n' "$g" "$note"
+  done
+
+  printf '\nINDIVIDUAL UNITS\n'
+  for u in "${USER_UNITS[@]}" "${SYS_UNITS[@]}"; do
+    note=""
+    unit_present "$u" || note="  ← not installed"
+    printf '  %-19s %-17s %-26s %s%s\n' \
+      "$u" "${DESC[$u]:-}" "${ADDR[$u]:-}" "$(resolve "$u")" "$note"
+  done
+
+  cat <<'HELPDOC'
+
+EXAMPLES
+  ai start ollama             start only Ollama
+  ai start unsloth            start Unsloth Studio
+  ai logs unsloth             its URL + API key are printed at startup
+  ai stop lemond              stop only Lemonade
+  ai restart heimdall         restart both Heimdall units
+  ai status ollama            status of a single unit
+  ai list                     what exists, and what is up right now
+  ai stop all                 everything down
+HELPDOC
+
+  printf '\nNOTE\n'
+  printf '  user services:          %s\n' "${USER_UNITS[*]}"
+  printf '  system services (sudo): %s\n' "${SYS_UNITS[*]}"
+  cat <<'HELPDOC'
+  `ai` routes each to the correct systemctl automatically — that distinction
+  is the single most forgettable thing here.
+
+  The unsloth *venv* (~/ai/unsloth) is a library, not a service — it is what
+  `unsloth-venv` and your training scripts import. Only Studio is startable.
+HELPDOC
+}
+
+# ── dispatch ─────────────────────────────────────────────────────────────────
+cmd=${1:-status}; shift || true
+case "$cmd" in
+  start|stop|restart|enable|disable)
+    while read -r u; do
+      printf '  %s%s%s %s\n' "$C_CYAN" "$cmd" "$C_RESET" "$u"; act "$cmd" "$u"
+    done < <(targets "${1:-all}") ;;
+  status)
+    tui_section "local ai stack" 60
+    while read -r u; do status_line "$u"; done < <(targets "${1:-all}")
+    if command -v ollama >/dev/null 2>&1 && systemctl is-active --quiet ollama; then
+      loaded=$(ollama ps 2>/dev/null | tail -n +2)
+      if [ -n "$loaded" ]; then
+        printf '%s\n' "$loaded" | while read -r l; do iinfo "$l"; done
+      fi
+    fi
+    tui_box_bot 60 ;;
+  list|targets) do_list "${1:-targets}" ;;
+  logs)
+    u=${1:?usage: ai logs <unit>}
+    # Accept a group alias that names exactly one unit, so `ai logs unsloth`
+    # works the same way `ai start unsloth` does.
+    if [ -n "${AI_GROUPS[$u]+_}" ] && [ "$(targets "$u" | wc -l)" -eq 1 ]; then
+      u="$(targets "$u")"
+    fi
+    if [ "$(resolve "$u")" = user ]; then journalctl --user -u "$u" -f
+    else sudo journalctl -u "$u" -f; fi ;;
+  help|-h|--help) show_help ;;
+  *) printf '%sunknown command: %s%s\n\n' "$C_YELLOW" "$cmd" "$C_RESET" >&2; show_help; exit 1 ;;
+esac

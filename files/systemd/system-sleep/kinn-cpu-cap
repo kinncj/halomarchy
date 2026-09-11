@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+# Resume rebuilds every cpufreq policy at the hardware maximum; put the cap back.
+[ "$1" = post ] && [ -f /etc/kinn/cpu-cap ] && exec /usr/local/bin/kinn-cpu-cap apply
+exit 0

@@ -1,0 +1,9 @@
+# AMD ISP4 driver sources (GPL-2.0+) are fetched at install time from the
+# kernel tree at the ref pinned in isp4.provenance, then verified against
+# isp4.sha256. They are deliberately NOT committed: this repo is MIT, and
+# redistributing another project's code here would muddy that.
+isp4/*.c
+isp4/*.h
+isp4/Makefile
+isp4/Kconfig
+isp4/LICENSE

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Cap CPU peak clock (kinn-cpu-cap) — see halomarchy docs/decisions.md §16
+# power-profiles-daemon rewrites EPP/governor on start; run after it so the
+# cap is the last word. PPD never touches scaling_max_freq afterwards.
+After=power-profiles-daemon.service
+ConditionPathExists=/etc/kinn/cpu-cap
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kinn-cpu-cap apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

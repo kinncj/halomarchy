@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+# Re-wrap Playwright's Chromium binaries whenever `playwright install` adds or
+# replaces a revision. Wants= also runs the wrap once when this unit starts at
+# login, covering installs that happened while it was inactive.
+[Unit]
+Description=Watch Playwright's browser cache and keep Chromium on the GPU
+Wants=playwright-gpu.service
+
+[Path]
+PathChanged=%h/.cache/ms-playwright
+MakeDirectory=yes
+DirectoryMode=0755
+
+[Install]
+WantedBy=default.target

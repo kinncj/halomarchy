@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Wrap Playwright's Chromium binaries with GPU (ANGLE/Vulkan) flags
+
+[Service]
+Type=oneshot
+# A fresh `playwright install` writes INSTALLATION_COMPLETE last; wait for it.
+ExecStart=%h/.local/bin/playwright-gpu wrap --wait 900

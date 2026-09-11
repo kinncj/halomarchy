@@ -1,0 +1,21 @@
+# Machine-specific values. Copy to local.conf (untracked) and edit.
+#   cp local.conf.example local.conf
+
+# Heimdall metrics hub — host:port. Often a Tailscale MagicDNS name, which is
+# why it is not committed: it identifies your tailnet.
+HEIMDALL_HUB="my-hub.example.ts.net:9090"
+
+# Unsloth venv location (default: ~/ai/unsloth)
+# KINN_VENV="$HOME/ai/unsloth"
+
+# Unsloth Studio's own CLI — what the unsloth-studio service runs. Studio's
+# installer puts it here; set this only if you relocated Studio.
+# KINN_STUDIO_BIN="$HOME/.local/bin/unsloth"
+
+# Peak-power guard (installers/power.sh). The ZBook Ultra G1a powers off
+# instantly under all-core boost bursts; the cap keeps the SoC out of that
+# regime. 3000 MHz is the nominal (non-boost) clock and is verified safe;
+# raise it if you have cooling headroom, or set the profile you want the
+# daemon to hold.
+# KINN_CPU_CAP_MHZ=3000
+# KINN_POWER_PROFILE=balanced
