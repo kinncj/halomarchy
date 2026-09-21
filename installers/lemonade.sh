@@ -15,7 +15,22 @@ fi
 # Arch packaging bug. That icon is the ONLY overlapping path between the two
 # manifests, so a scoped overwrite is safe.
 pkg_install_overwrite /usr/share/pixmaps/lemonade-app.svg lemonade-server
-unit_enable_user lemond
+
+# Deliberately NOT enabled by default. A coding-grade model holds ~17 GB
+# resident, and this is a laptop that is also a desktop -- paying that on every
+# boot for a server you use in bursts is the wrong trade. Lemonade loads the
+# model lazily, so starting on demand costs only the daemon:
+#
+#   ai start lemonade     (or: halo up)
+#
+# Set LEMOND_AUTOSTART=1 when the box really is a dedicated inference server.
+# Never disables an already-enabled unit: that is the operator's call, not the
+# installer's.
+if [ "${LEMOND_AUTOSTART:-0}" -eq 1 ]; then
+    unit_enable_user lemond
+else
+    info "lemond left on-demand (LEMOND_AUTOSTART=1 to enable at boot)"
+fi
 
 if have_cmd lemonade && [ "${DRY_RUN:-0}" -ne 1 ]; then
     info "installing llamacpp:rocm backend (~1.7 GB, gfx1151-specific runtime)"

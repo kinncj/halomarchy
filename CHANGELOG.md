@@ -5,6 +5,13 @@ Notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- `lemonade` installer no longer enables `lemond` at boot. A coding-grade model
+  holds ~17 GB resident and this is a laptop before it is a server; Lemonade
+  loads lazily, so `ai start lemonade` on demand costs only the daemon. Opt back
+  in with `LEMOND_AUTOSTART=1`. The installer never disables a unit you enabled
+  yourself. Documented in `docs/services.md`.
+
 ### Added
 - `playwright` module: every Playwright-managed Chromium on the machine renders
   WebGL through ANGLE → Vulkan → RADV instead of SwiftShader. `bin/playwright-gpu`

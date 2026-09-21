@@ -31,7 +31,7 @@ flowchart TB
 
 | Unit | Scope | Listens | Notes |
 |---|---|---|---|
-| `lemond` | **user** | `:13305` http, `:9000` ws | AMD-native; own ROCm 7.14 for gfx1151 |
+| `lemond` | **user** | `:13305` http, `:9000` ws | AMD-native; own ROCm 7.14 for gfx1151. **On-demand — not enabled at boot** |
 | `unsloth-studio` | **user** | `:8888` ui + api | loopback only; supervises its own `llama-server` children |
 | `ollama` | system | `:11434` | OpenAI-compatible at `/v1` |
 | `heimdall-helper` | system (root) | unix socket | RAPL `power.cpu` + hwmon |
@@ -75,6 +75,28 @@ ai disable ollama
 
 ai logs lemond             # follow journal (routes user vs system)
 ```
+
+### lemond starts off, on purpose
+
+The installer does **not** enable `lemond`. A coding-grade model holds roughly
+17 GB resident, and this machine is a laptop before it is a server — paying
+that on every boot for something used in bursts is the wrong trade. Lemonade
+loads the model lazily, so starting on demand costs only the daemon:
+
+```sh
+ai start lemonade          # near-instant; the model loads on the first request
+ai stop  lemonade          # frees the RAM
+```
+
+If a box really is a dedicated inference server, opt in at install time:
+
+```sh
+LEMOND_AUTOSTART=1 ./installers/lemonade.sh
+```
+
+`ai enable all` still does exactly what it says and will enable `lemond` too.
+That is your call; the installer simply stops making it for you, and it never
+disables a unit you enabled yourself.
 
 `lemond` and `unsloth-studio` are **user** services; `ollama`/`heimdall-*` are
 **system** services. `ai` picks the right `systemctl` so you never have to

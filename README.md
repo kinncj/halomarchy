@@ -57,7 +57,7 @@ ai status                  # what's running
 | `power` | CPU clock cap that survives boot and resume, plus a held `balanced` profile — the ZBook powers off instantly under all-core boost bursts |
 | `heimdall` | host metrics (CPU/GPU power, thermals) streamed to a hub |
 | `ollama` | **Ollama** on ROCm, `:11434`, OpenAI-compatible |
-| `lemonade` | **AMD Lemonade Server**, `:13305`, its own gfx1151 ROCm runtime |
+| `lemonade` | **AMD Lemonade Server**, `:13305`, its own gfx1151 ROCm runtime — on-demand, not enabled at boot (`LEMOND_AUTOSTART=1` to change) |
 | `unsloth` | LoRA fine-tuning venv, pinned to wheels that actually contain gfx1151, plus **Unsloth Studio** as an `ai`-managed service |
 | `commands` | the `ai` service-control command |
 
