@@ -93,12 +93,38 @@ act() {
   esac
 }
 
+# A model server can be pointed at a hand-built engine instead of the one it
+# ships with, and that choice outlives the shell that made it -- `ai start`
+# inherits whatever the config last named. An engine swapped for speed can be
+# trading away accuracy (see docs/services.md), so a non-default one is state
+# worth surfacing rather than leaving to be discovered.
+custom_engine() {
+  local cfg="${XDG_CONFIG_HOME:-$HOME/.config}/lemonade/config.json"
+  [ -r "$cfg" ] || return 1
+  python3 - "$cfg" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1])).get("llamacpp", {})
+except Exception:
+    raise SystemExit(1)
+for k in ("vulkan_bin", "rocm_bin", "cpu_bin"):
+    v = d.get(k)
+    if v and v != "builtin":
+        print(f"{k}={v}")
+        raise SystemExit(0)
+raise SystemExit(1)
+PYEOF
+}
+
 status_line() {
   local unit=$1 state; state=$(unit_state "$unit")
   if unit_active "$unit"; then
     tui_summary_row "${DESC[$unit]:-$unit}" ok   "${ADDR[$unit]:-}  ${state}"
   else
     tui_summary_row "${DESC[$unit]:-$unit}" skip "${ADDR[$unit]:-}  ${state}"
+  fi
+  if [ "$unit" = lemond ]; then
+    local eng; eng=$(custom_engine) && iinfo "custom engine: $eng"
   fi
 }
 

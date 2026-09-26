@@ -6,6 +6,9 @@ Notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- `ai status` now names a non-default inference engine. A custom `*_bin` outlives
+  the shell that set it, so `ai start` silently inherits it; an engine chosen for
+  speed can be trading away accuracy, which makes it state worth showing.
 - `tools/needle-retrieval.py`: plants five distinctive values at known depths in
   a long prompt and counts how many come back. Speculative prefill drops prompt
   chunks, and a dropped chunk yields a confident answer rather than an error, so

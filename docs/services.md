@@ -76,6 +76,21 @@ ai disable ollama
 ai logs lemond             # follow journal (routes user vs system)
 ```
 
+### Which engine is actually running
+
+`ai status` names a non-default engine, because that choice outlives the shell
+that made it — `ai start` inherits whatever the config last named, and an engine
+swapped for speed may be trading away accuracy:
+
+```
+  ✓  Lemonade Server      :13305 http, :9000 ws  active/disabled
+  · custom engine: vulkan_bin=~/.local/share/strix-llama/bin/llama-server
+```
+
+No line means the server's own build. A client that selects an engine per run
+(see the `--backend` pattern) should set the key on every launch rather than
+only when asked to change, so the engine is never inherited from last time.
+
 ### Two engines behind one server
 
 The model server supervises whichever `llama-server` binary you point it at, so
