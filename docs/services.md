@@ -116,9 +116,28 @@ both at the *middle* of the document while keeping the beginning and the end.
 Every timing was better. A coding client would have lost the function it was
 editing and said nothing about it.
 
-**Start at 0.30 and measure retrieval before going lower.** Plant a handful of
-distinctive values at known depths in a long prompt, ask for them back, and
-count. A stopwatch cannot see this failure.
+**Start at 0.30 — which is also the engine's own default — and measure
+retrieval before going lower.** `tools/needle-retrieval.py` does exactly that:
+it plants five distinctive values at 8/27/51/74/93% depth, asks for them back,
+and exits non-zero if any are missing.
+
+```sh
+tools/needle-retrieval.py --url http://127.0.0.1:8080 --label control
+tools/needle-retrieval.py --url http://127.0.0.1:8080 --label p0.30
+```
+
+Run the unfiltered control first. If it does not score 5/5, the harness or the
+model is at fault, not the filter. What the failure looks like:
+
+```
+control: 5/5 | d08:HIT d27:HIT d51:HIT  d74:HIT  d93:HIT | wall 143.7s
+p0.30:   5/5 | d08:HIT d27:HIT d51:HIT  d74:HIT  d93:HIT | wall  58.2s
+p0.15:   3/5 | d08:HIT d27:HIT d51:MISS d74:MISS d93:HIT | wall  41.2s
+```
+
+The two lost at `p=0.15` were a pinned dependency version and an error code —
+exactly the kind of exact token a coding agent must not invent. Both ends of the
+document survived; the middle did not. A stopwatch cannot see this.
 
 ### lemond starts off, on purpose
 
