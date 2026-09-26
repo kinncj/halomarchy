@@ -6,6 +6,11 @@ Notable changes to this project. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- `tools/needle-retrieval.py`: plants five distinctive values at known depths in
+  a long prompt and counts how many come back. Speculative prefill drops prompt
+  chunks, and a dropped chunk yields a confident answer rather than an error, so
+  timing alone cannot tell you what a filtering ratio costs. Exits non-zero on
+  any miss, so it can gate a config change.
 - `strix-llama` installer: builds `halo-box/strix-llama.cpp` for gfx1151 with
   speculative prefill. Measured on a 395 laptop at 70 W, 27B Q4 at 32k context,
   TTFT falls 163.8s -> 49.6s (3.3x) with decode unchanged. It is lossy — at
