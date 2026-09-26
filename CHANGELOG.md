@@ -5,6 +5,17 @@ Notable changes to this project. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- `strix-llama` installer: builds `halo-box/strix-llama.cpp` for gfx1151 with
+  speculative prefill. Measured on a 395 laptop at 70 W, 27B Q4 at 32k context,
+  TTFT falls 163.8s -> 49.6s (3.3x) with decode unchanged. It is lossy — at
+  `p=0.15` retrieval dropped to 3/5 planted facts, losing the middle of the
+  document while keeping both ends, so 0.30 is the documented floor and the
+  installer wires nothing up for you. Vendors Vulkan/SPIRV headers (no root),
+  builds at `-j8` because this is a sustained all-core load, and installs a
+  self-contained launcher — a copied `llama-server` otherwise keeps resolving
+  against the build tree and exits 127 under a clean environment.
+
 ### Changed
 - `lemonade` installer no longer enables `lemond` at boot. A coding-grade model
   holds ~17 GB resident and this is a laptop before it is a server; Lemonade

@@ -76,6 +76,50 @@ ai disable ollama
 ai logs lemond             # follow journal (routes user vs system)
 ```
 
+### Two engines behind one server
+
+The model server supervises whichever `llama-server` binary you point it at, so
+swapping engines does not mean a second service, a second port, or rewiring any
+client. One config key changes:
+
+```sh
+<server> config set llamacpp.vulkan_bin=builtin                        # stock
+<server> config set llamacpp.vulkan_bin=~/.local/share/strix-llama/bin/llama-server
+```
+
+**It wants the path to the binary, not the directory.** Given a directory it
+fails with `Failed to execute: <dir>`.
+
+| engine | what it is | when |
+|---|---|---|
+| builtin | the server's own llama.cpp build | default; leave it here |
+| `strix-llama` | `halo-box/strix-llama.cpp`, installed by `installers/strix-llama.sh` | when time-to-first-token hurts |
+
+**What the second one buys, measured on a Ryzen AI MAX+ 395 laptop at 70 W with
+a 27B Q4 at 32k context:**
+
+| | TTFT | decode | needles retrieved |
+|---|---|---|---|
+| builtin | 163.8 s | 20.75 tok/s | 5/5 |
+| strix-llama, `--spec-prefill-p 0.30` | **49.6 s** | 21.1 tok/s | **5/5** |
+| strix-llama, `--spec-prefill-p 0.15` | 31.5 s | 25.1 tok/s | **3/5** |
+
+Decode is pinned by memory bandwidth on this hardware and barely moves. TTFT is
+not pinned by anything, and an agentic client resends its context every turn --
+at 32k that is the difference between roughly 55 minutes and 17 minutes of
+prefill across a twenty-turn session.
+
+**Speculative prefill is lossy, and the last row is why that matters.** A small
+draft model scores the prompt and low-scoring chunks never reach the big model.
+At `p=0.15` the same setup retrieved only three of five planted facts, missing
+both at the *middle* of the document while keeping the beginning and the end.
+Every timing was better. A coding client would have lost the function it was
+editing and said nothing about it.
+
+**Start at 0.30 and measure retrieval before going lower.** Plant a handful of
+distinctive values at known depths in a long prompt, ask for them back, and
+count. A stopwatch cannot see this failure.
+
 ### lemond starts off, on purpose
 
 The installer does **not** enable `lemond`. A coding-grade model holds roughly

@@ -59,6 +59,7 @@ ai status                  # what's running
 | `ollama` | **Ollama** on ROCm, `:11434`, OpenAI-compatible |
 | `lemonade` | **AMD Lemonade Server**, `:13305`, its own gfx1151 ROCm runtime — on-demand, not enabled at boot (`LEMOND_AUTOSTART=1` to change) |
 | `unsloth` | LoRA fine-tuning venv, pinned to wheels that actually contain gfx1151, plus **Unsloth Studio** as an `ai`-managed service |
+| `strix-llama` | `halo-box/strix-llama.cpp` with speculative prefill — **3.3x faster time-to-first-token** at 32k context; lossy, see `docs/services.md` |
 | `commands` | the `ai` service-control command |
 
 ## Measured on this hardware
