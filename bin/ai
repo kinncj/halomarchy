@@ -17,11 +17,12 @@ export KINN_TAGLINE
 . "$KINN_ROOT/installers/_tui.sh"
 
 # ── registry ─────────────────────────────────────────────────────────────────
-USER_UNITS=(lemond unsloth-studio)                   # systemctl --user
+USER_UNITS=(lemond strata unsloth-studio)            # systemctl --user
 SYS_UNITS=(ollama heimdall-helper heimdall-daemon)   # systemctl (root)
 
 declare -A DESC=(
   [lemond]="Lemonade Server"
+  [strata]="Strata (sparse MoE, gfx1151)"
   [unsloth-studio]="Unsloth Studio"
   [ollama]="Ollama"
   [heimdall-helper]="Heimdall helper"
@@ -29,6 +30,7 @@ declare -A DESC=(
 )
 declare -A ADDR=(
   [lemond]=":13305 http, :9000 ws"
+  [strata]=":13306 openai + anthropic"
   [unsloth-studio]=":8888 ui + api"
   [ollama]=":11434"
   [heimdall-helper]="unix socket"
@@ -40,14 +42,15 @@ declare -A ADDR=(
 # bash's own read-only array of the caller's group IDs.
 declare -A AI_GROUPS=(
   [all]="${USER_UNITS[*]} ${SYS_UNITS[*]}"
-  [ai]="lemond ollama unsloth-studio"
+  [ai]="lemond strata ollama unsloth-studio"
   [heimdall]="heimdall-helper heimdall-daemon"
   [lemonade]="lemond"
+  [strata]="strata"
   [unsloth]="unsloth-studio"
   [studio]="unsloth-studio"
 )
 # Bash hashes associative keys, so listings need an explicit order.
-GROUP_ORDER=(all ai heimdall lemonade unsloth studio)
+GROUP_ORDER=(all ai heimdall lemonade strata unsloth studio)
 
 # ── unit queries ─────────────────────────────────────────────────────────────
 resolve() {

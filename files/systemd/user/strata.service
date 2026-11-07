@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Kinn Coelho Juliao <kinncj@protonmail.com>
+# SPDX-License-Identifier: MIT
+# Template: @STRATA_*@ are substituted by installers/strata.sh.
+#
+# Strata serves a SPARSE MoE (Qwen3.8-Flash-Next) where Lemonade serves the
+# dense 27B. That is the whole point: this laptop is at its 256 GB/s memory
+# bandwidth wall on a dense model, so only a sparse one goes faster. Measured
+# here, warm medians, against Lemonade on the same machine:
+#
+#            decode        prefill      time to first token
+#   8k       49.6 / 24.6   1,116         7.9s / 32.4s
+#   32k      55.4 / 20.8   1,083        31.0s / 163.8s
+#   131k     47.7 / --     1,135       116.0s / cannot run
+#
+# Prefill is FLAT with depth, which is the structural win: Lemonade's TTFT at
+# 32k was the laptop's real cost, not its tokens per second.
+[Unit]
+Description=Strata inference server (sparse MoE, gfx1151)
+Documentation=https://github.com/Niko1221/Strata
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+
+# The PLE table is 26.8 GiB and the engine locks it when it may: measured up to
+# 6% of decode. Without this the engine logs "may lock only 0.0 GiB" and runs
+# slower with the table's pages merely faulted in.
+LimitMEMLOCK=infinity
+
+# NO hugepages. The expert arena is registered with cudaHostRegister, which
+# cannot draw from hugetlbfs, so a vm.nr_hugepages reservation is memory this
+# process can never use -- it only starves the machine. Transparent huge pages
+# already cover it. Reserving 56 GiB here once put the box into OOM and the
+# kernel killed the desktop session.
+
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
+
+# --ple-io direct and --mmap-experts live in the profile, not here, because they
+# are the difference between running and an OOM on a 128 GB machine: the engine
+# otherwise keeps a pinned host arena AND a GPU-resident cache, 55.43 GiB each.
+ExecStart=@STRATA_PY@ @STRATA_HOME@/control/strata.py serve \
+  --profile @STRATA_PROFILE@ --host 127.0.0.1 --port @STRATA_PORT@
+
+Restart=on-failure
+RestartSec=5
+# Loading 55 GiB of experts through the page cache takes a while on a cold cache.
+TimeoutStartSec=600
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

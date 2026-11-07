@@ -11,6 +11,43 @@ Ryzen AI MAX+ PRO 395 · Radeon 8060S (gfx1151) · 128 GB unified.
 
 Both are llama.cpp on ROCm, so they land in the same place.
 
+## Inference — Qwen3.8-Flash-Next (SPARSE), Strata
+
+The dense numbers above are a **bandwidth wall**: 17.5 GB of weights read per
+token against ~256 GB/s, which is why two independent engines agree to within
+2.6%. A sparse model reads 10 of 512 experts per token instead, and is the only
+thing measured here that goes past it.
+
+Strata 0.2.11 / engine 0.1.57, Qwen3.8-Flash-Next UD-IQ4_XS, 70 W, prompts taken
+from llama.cpp's own C++ sources, 256 generated tokens, **warm medians of 3 fresh
+processes per length**:
+
+| prompt | decode | prefill | TTFT | dense 27B decode | dense 27B TTFT |
+|---|---|---|---|---|---|
+| 8k | **49.6 tok/s** | 1,116 tok/s | **7.9 s** | 24.6 | 32.4 s |
+| 32k | **55.4 tok/s** | 1,083 tok/s | **31.0 s** | 20.8 | 163.8 s |
+| 131k | **47.7 tok/s** | 1,135 tok/s | **116.0 s** | — | cannot run |
+
+- **2.0x decode / 4.1x TTFT at 8k; 2.7x / 5.3x at 32k**, and **lossless** — no
+  part of the prompt is dropped, unlike speculative prefill.
+- **Prefill is flat with depth** (~1,100 tok/s from 8k to 131k). The dense path's
+  163.8 s to first token at 32k was this laptop's real cost; it is not a tokens
+  per second problem.
+- **Decode is not monotonic**: 32k measures faster than 8k. Reproduced, not noise.
+
+Two measurement traps worth inheriting:
+
+- **The first run at any new length is 30-36% slower** (32k: 38.3 cold, 55.4
+  warm). The experts are served from page cache, so a new depth faults them in
+  from SSD. Discard run 1 or report it separately.
+- **Engine-level and API-level numbers are not comparable.** Through the same
+  harness and prompts as the dense path, decode reads 34.9-39.0 tok/s against
+  Lemonade's 24.6 — the honest same-instrument pair. The table above is the
+  engine measuring itself on different prompts.
+
+Setup, the two flags that prevent an out-of-memory kill, and why hugepages must
+*not* be reserved: [strata.md](strata.md).
+
 ```mermaid
 flowchart LR
     A["quant variant"] -.->|"no effect"| G["~18 tok/s<br/>generation"]

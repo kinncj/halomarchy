@@ -60,6 +60,7 @@ ai status                  # what's running
 | `lemonade` | **AMD Lemonade Server**, `:13305`, its own gfx1151 ROCm runtime — on-demand, not enabled at boot (`LEMOND_AUTOSTART=1` to change) |
 | `unsloth` | LoRA fine-tuning venv, pinned to wheels that actually contain gfx1151, plus **Unsloth Studio** as an `ai`-managed service |
 | `strix-llama` | `halo-box/strix-llama.cpp` with speculative prefill — **3.3x faster time-to-first-token** at 32k context; lossy, see `docs/services.md` |
+| `strata` | **Strata** on a sparse MoE (Qwen3.8-Flash-Next), `:13306`, OpenAI + Anthropic APIs — **2.0-2.7x the decode and 4-5x the TTFT** of the dense path, and lossless; on-demand, see [docs/strata.md](docs/strata.md) |
 | `commands` | the `ai` service-control command |
 
 ## Measured on this hardware
@@ -68,12 +69,26 @@ ai status                  # what's running
 |---|---|
 | **Qwen3.8-27B** Q4 (Ollama, 100% GPU) | **18.3–18.6 tok/s** generation, 122 tok/s prefill |
 | **Qwen3.8-27B** Q4 (Lemonade) | 17.5–17.6 tok/s (includes HTTP overhead) |
+| **Qwen3.8-Flash-Next** IQ4_XS (Strata, sparse) | **49.6 / 55.4 / 47.7 tok/s** at 8k / 32k / 131k |
+| …its prefill | **~1,100 tok/s, flat from 8k to 131k** |
+| …its time to first token | **7.9 s / 31 s / 116 s** vs the dense path's 32.4 s / 163.8 s / cannot run |
 | 4-bit LoRA, Qwen3-0.6B | 5 steps in **1.5 s**, 0.71 GiB peak |
 | GPU memory addressable | **54.9 GiB** GTT of 128 GB unified |
 
 Generation on a dense 27B is **memory-bandwidth-bound** — no quant variant, MTP
-build or attention flag moves it. Full numbers and dead ends (`nvfp4`, `mxfp8`,
-`mlx`, the NPU) in **[docs/benchmarks.md](docs/benchmarks.md)**.
+build or attention flag moves it. Measured both ways: two independent engines
+land within 2.6% of each other on the same model, which is what a bandwidth wall
+looks like.
+
+**A sparse model is the way past it, and it is measured too.** Qwen3.8-Flash-Next
+routes 10 of 512 experts per token, so decode reads a fraction of the weights:
+**2.0-2.7x the dense decode**, and prefill that does not decay with depth at all
+(~1,100 tok/s from 8k to 131k). On this laptop the dense path's real cost was
+never its tokens per second but its **163.8 s to first token at 32k** — that
+becomes 31 s, losslessly. See **[docs/strata.md](docs/strata.md)**.
+
+Full numbers and dead ends (`nvfp4`, `mxfp8`, `mlx`, the NPU) in
+**[docs/benchmarks.md](docs/benchmarks.md)**.
 
 ## Install
 
@@ -158,6 +173,7 @@ file the installer would touch and asserts the dry-run left them all untouched.
 |---|---|
 | [docs/bios.md](docs/bios.md) | **BIOS prerequisites** — Secure Boot, TPM, Pluton/s0i3 |
 | [docs/architecture.md](docs/architecture.md) | hardware → drivers → runtimes → engines, memory layout |
+| [docs/strata.md](docs/strata.md) | the sparse-MoE engine: measured gains, the OOM flags, why not hugepages |
 | [docs/services.md](docs/services.md) | ports, user vs system scope, lifecycle |
 | [docs/decisions.md](docs/decisions.md) | **why every pin and workaround exists** |
 | [docs/benchmarks.md](docs/benchmarks.md) | measured numbers, and what does not help |
@@ -192,6 +208,7 @@ This repo is mostly *glue*. The actual work belongs to:
 | [Unsloth](https://unsloth.ai/) | memory-efficient LoRA fine-tuning |
 | [Ollama](https://ollama.com/) | model serving |
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) | the inference engine under both servers |
+| [Strata](https://github.com/Niko1221/Strata) | sparse-MoE engine with a gfx1151 path (MIT) |
 | [PyTorch](https://pytorch.org/) / [Triton](https://github.com/triton-lang/triton) | ROCm wheels and GPU kernels |
 | [bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes) | 4-bit quantisation |
 | [Mesa / RADV](https://www.mesa3d.org/) | Vulkan for gaming |

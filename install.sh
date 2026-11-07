@@ -87,7 +87,7 @@ gpu=$(printf '%s' "$gpu" | awk -F: '/Name:.*gfx/ && !seen {gsub(/ /,"",$2); prin
 # environment must precede unsloth (bitsandbytes needs rocminfo on PATH);
 # gaming must precede playwright (its Chromium wrapper needs the RADV ICD);
 # packages must precede everything (installs uv and the ROCm toolchain).
-KNOWN_MODULES=(packages environment webcam gaming playwright power heimdall ollama lemonade unsloth commands)
+KNOWN_MODULES=(packages environment webcam gaming playwright power heimdall ollama lemonade strata unsloth commands)
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
     log ""
