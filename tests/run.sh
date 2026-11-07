@@ -182,10 +182,31 @@ t_tui_help_exits_zero() {
 
 # `ai help` and `ai list` are rendered from the registry, not a heredoc: every
 # unit must appear in both, or a service exists that nothing tells you about.
+# `ai status` printed Lemonade and silently stopped, hiding every other unit,
+# whenever Lemonade was on its builtin engine: custom_engine exits 1 to mean
+# "nothing to report", that was the last command in status_line, and `set -e`
+# killed the caller's loop. It still exited 0 from the caller's view, so nothing
+# noticed. Asserting on unit NAMES would couple this to which units happen to be
+# installed here, so assert the shape of the failure instead: the loop must not
+# stop after the first row, and the command must exit clean.
+t_ai_status_survives_the_loop() {
+    local out rc rows bad=0
+    out="$("$REPO_DIR/bin/ai" status 2>&1)"; rc=$?
+    [ "$rc" -eq 0 ] || { echo "ai status exited $rc"; bad=1; }
+    # One row per present unit: the marker column is the only reliable anchor.
+    rows=$(awk '/(active|inactive)\/(enabled|disabled)/{n++} END{print n+0}' <<<"$out")
+    if [ "$rows" -lt 2 ]; then
+        echo "only $rows unit row(s) rendered — the status loop aborted early"
+        bad=1
+    fi
+    [ "$bad" -eq 0 ] && echo "$rows unit rows in one pass, exit 0"
+    return $bad
+}
+
 t_ai_registry_rendered() {
     local out u bad=0
     out="$("$REPO_DIR/bin/ai" help 2>&1)$("$REPO_DIR/bin/ai" list 2>&1)"
-    for u in lemond unsloth-studio ollama heimdall-helper heimdall-daemon; do
+    for u in lemond strata unsloth-studio ollama heimdall-helper heimdall-daemon; do
         awk -v u="$u" 'index($0, u) {found=1} END{exit !found}' <<<"$out" \
             || { echo "$u missing from ai help/list"; bad=1; }
     done

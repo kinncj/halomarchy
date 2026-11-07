@@ -127,7 +127,14 @@ status_line() {
     tui_summary_row "${DESC[$unit]:-$unit}" skip "${ADDR[$unit]:-}  ${state}"
   fi
   if [ "$unit" = lemond ]; then
-    local eng; eng=$(custom_engine) && iinfo "custom engine: $eng"
+    # custom_engine exits 1 to mean "nothing to report", which is the NORMAL
+    # case (vulkan_bin=builtin). As the last command of this function that made
+    # status_line return 1, and `set -e` then killed the caller's loop -- so
+    # `ai status` printed Lemonade and silently stopped, hiding every other
+    # unit. An `if` consumes the failure and returns 0 when the branch is
+    # skipped. Any status_line that can end on a failing command is this bug.
+    local eng
+    if eng=$(custom_engine); then iinfo "custom engine: $eng"; fi
   fi
 }
 
