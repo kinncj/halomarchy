@@ -88,6 +88,15 @@ The engine's `MAP_HUGETLB unavailable` line is informational; transparent huge
 pages already cover it. Reserving 56 GiB here once drove the box into OOM and the
 kernel killed the desktop session.
 
+**Set `"reasoning_effort": "none"` in the run config.** Flash-Next is a reasoning
+model and thinks by default, so a client that sends no `reasoning_effort` gets
+its whole token budget spent on `reasoning_content` and comes back with
+`content: null` and `finish_reason: length` — an empty answer, not an error.
+Measured: a 32-token request returned nothing; with the config key it answers in
+2 tokens and stops. This is the **server-side fuse**, the same place the dense
+path puts `--reasoning-effort low`: putting it in the client means every client
+has to remember.
+
 **`LimitMEMLOCK=infinity`** (the unit sets it) lets the engine lock the n-gram
 table: measured up to 6% of decode, and it roughly doubled the arena load rate.
 
