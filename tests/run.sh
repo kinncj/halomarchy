@@ -217,6 +217,39 @@ t_ai_registry_rendered() {
     return $bad
 }
 
+# The three entries in the Strata run config that are not tuning. Dropping
+# --mmap-experts cost this machine an OOM kill that took the desktop with it;
+# dropping reasoning_effort makes every client that does not send one get an
+# empty answer with no error. A template is the only copy a rebuilt machine
+# gets, so assert its content rather than trusting a comment to be read.
+t_strata_profile_template() {
+    local tpl="$REPO_DIR/files/strata/flash-next.json.in" bad=0 out
+    [ -f "$tpl" ] || { echo "no profile template"; return 2; }
+    out=$(python3 - "$tpl" <<'PYEOF'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+args = cfg.get("args", [])
+bad = []
+if "--mmap-experts" not in args:
+    bad.append("--mmap-experts")
+if not any(a == "--ple-io" and args[i + 1] == "direct"
+           for i, a in enumerate(args) if i + 1 < len(args)):
+    bad.append("--ple-io direct")
+if cfg.get("reasoning_effort") != "none":
+    bad.append('reasoning_effort: "none"')
+for key in ("exe", "tokenizer"):
+    if not isinstance(cfg.get(key), str) or not cfg[key]:
+        bad.append(key)
+print("missing: " + ", ".join(bad) if bad else "template keeps all three non-negotiables")
+raise SystemExit(1 if bad else 0)
+PYEOF
+) || bad=1
+    echo "$out"
+    # A placeholder left unrendered would install a profile the engine cannot read.
+    grep -q '@STRATA_HOME@' "$tpl" || { echo "template has no @STRATA_HOME@ placeholder"; bad=1; }
+    return $bad
+}
+
 t_ai_no_color_list() {
     local out
     out=$(NO_COLOR=1 "$REPO_DIR/bin/ai" list 2>&1)

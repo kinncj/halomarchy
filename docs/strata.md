@@ -69,6 +69,14 @@ The service is ~96 GB of locally built artefacts: the packaged engine, a model
 pack, and an MTP draft layer. `installers/strata.sh` names any missing piece
 rather than failing at start.
 
+The **run config** is the one piece the installer can produce: it renders
+`files/strata/flash-next.json.in` — the configuration everything above was
+measured with — into `~/strata/profiles/flash-next.json`, substituting the home
+and the two GGUF shard paths it finds at the pinned revision. An existing
+profile is **never** overwritten, so a tuned one survives a re-run. Three of
+its entries are not tuning — the two flags immediately below and the reasoning
+fuse further down — and `tests/run.sh` fails if the template loses any of them.
+
 **Two flags are the difference between running and an out-of-memory kill** on a
 128 GB machine, and they live in the run config:
 
@@ -88,7 +96,7 @@ The engine's `MAP_HUGETLB unavailable` line is informational; transparent huge
 pages already cover it. Reserving 56 GiB here once drove the box into OOM and the
 kernel killed the desktop session.
 
-**Set `"reasoning_effort": "none"` in the run config.** Flash-Next is a reasoning
+**`"reasoning_effort": "none"` in the run config.** Flash-Next is a reasoning
 model and thinks by default, so a client that sends no `reasoning_effort` gets
 its whole token budget spent on `reasoning_content` and comes back with
 `content: null` and `finish_reason: length` — an empty answer, not an error.
